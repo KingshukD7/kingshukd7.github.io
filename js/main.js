@@ -3,13 +3,13 @@
 //  World: Three.js  ·  Models: Kenney (CC0) retinted to palette
 // ============================================================
 import * as THREE from 'three';
-import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
-import { EffectComposer } from '../vendor/postprocessing/EffectComposer.js';
-import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
-import { ShaderPass } from '../vendor/postprocessing/ShaderPass.js';
-import { FXAAShader } from '../vendor/shaders/FXAAShader.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/shaders/FXAAShader.js';
 
 // ---------- Palette: "Postcard Afternoon" ----------
 const PAL = {
