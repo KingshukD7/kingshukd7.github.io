@@ -18,7 +18,7 @@ const PAL = {
   grass:     0x8cc48c, grassDeep: 0x568f66,
   cliff:     0x647a87, cliffDeep: 0x4b5766,
   sand:      0xe8e3cf, water:     0x75bdc3, waterDeep:0x468c92,
-  path:      0xd8d2b6, ember:     0xff8a3c,
+  path:      0xd8d2b6,
   fog:       0xafe7eb,
 };
 // Messenger-informed grade targets: cool-dominant, warm reserved for accents
@@ -227,62 +227,61 @@ const DELIVERIES = {
     },
     thanks:"I just made Dijkstra fight A*. This is the best mail ever!"
   },
-  shrine: {
-    npc:'Cinder', role:'the ember spirit', building:'Ember Shrine', stamp:null,
-    tint:0xc45b3a, npcTint:{cloth:0xc8553d, accent:0xffb36b},
+  strong: {
+    npc:'June', role:'the morning walker', building:'The Steady Studio', stamp:null,
+    tint:0xd6a24e, npcTint:{cloth:0x7f8f8a, accent:0xe8b34b},
     dialog:[
-      "…warm. The envelope is warm. It remembers the last cinder.",
-      "Read it to me, courier. My hands would only burn the paper."
+      "A letter? For me? Goodness, nobody posts anything but bills these days.",
+      "Oh… it's about getting up off the floor without grabbing the couch. Read it slowly, love. I want every word."
     ],
     letter:{
- title:'Emberlight: The Last Cinder', sub:'Solo dark cozy pixel platformer · in progress · one single HTML file',
+      title:'Everyday Strong', sub:'Solo mobile app · React Native & Expo · for adults 50 to 70 · in development',
       body:[
- "Cinder, a whole dying world in one file. Emberlight is a dark cozy pixel platformer: you are the last cinder of a dying flame, side scrolling through five acts of a world going out, jumping, dodging and outlasting what hunts you in the dark. Four named bosses stand between you and the end, the Moth Queen, The Archivist, Vesper, and Keeper Noct, with seven enemy types running their own state machine behaviours.",
- "At the centre burns the Kindlelight: your glow is simultaneously your health, your light radius, the solidity of the platforms beneath you, and your enemy aggro range. Burn bright, be hunted. Fade, and the world itself gives way beneath your feet.",
- "Underneath runs a twelve state game architecture, menus, level select, gameplay, pause, death, boss encounters, endings, with persistent data across all of it. Every sprite is rendered from ASCII pixel grids at runtime, every sound synthesized through WebAudio with per act chord progressions. Zero external assets, commercially clean, built alone, and still growing."
+        "June, this one was built for mornings like yours. Everyday Strong is a gentle daily movement app for people aged 50 to 70: ten unhurried minutes of bodyweight movement, organised around real life goals instead of reps. Getting up off the floor without reaching for the furniture. Carrying the shopping in one trip. Staying steady on the stairs.",
+        "The app itself: there are no streaks, no scores and no guilt notifications, by design. Progress is narrated, never graded: in March you needed both hands, today you used one. A clear schematic figure demonstrates every movement, everything runs offline on the phone with no account, and it costs about ten dollars once, owned like a book. An optional circle lets you share wins with the people who love you, and the app is built so it structurally cannot report a missed day.",
+        "Kingshuk is building it solo, as product lead and sole developer, working with an AI coding agent through phased pull requests and reviewing every diff himself. It is feature complete with 113 passing tests, and right now it is moving into its new look: Steady, a quiet world of limestone, amber and river stones."
       ],
-      tags:['JavaScript','Single HTML file','12-state architecture','4 named bosses','7 FSM enemy types','Procedural art & audio','In progress'],
+      tags:['React Native','Expo','TypeScript','Offline first','Accessibility first','113 passing tests','In progress'],
       links:[],
-      sig:'keep glowing. K.D.',
- status:'in progress',
+      sig:'move gently. K.D.',
+      status:'in progress',
       snapshot:{
- role:'Solo Game Developer, design, code, art, audio', team:'1 person', duration:'Ongoing, in active development',
-        status:'In progress · playable build',
- tools:'JavaScript, HTML5 Canvas, WebAudio, one single HTML file, zero external assets',
- resp:'Everything: game design; the twelve state game architecture with persistent data; four boss AI patterns and seven FSM enemy types; four permanent powerup systems; ASCII grid procedural sprite rendering; the WebAudio synthesis engine with per act chord progressions; the traversal QA bot; the eight document design suite'
+        role:'Product lead & sole developer, concept, design direction, architecture, code review', team:'1 person, working with an AI coding agent', duration:'July 2026 to now, in active development',
+        status:'In development · feature complete, mid redesign',
+        tools:'React Native, Expo, TypeScript, Claude Code, GitHub (one pull request per phase)',
+        resp:'Product concept and decision record; the safety boundary that keeps it a wellness product; architecture and phased build plan; written specs for the coding agent; review of every diff before merge; art direction through two redesigns'
       },
       cases:[
-        {t:'The Kindlelight: one number, four systems',
- c:'The core idea, your glow is simultaneously your health, your light radius, the solidity of certain platforms, and your enemy aggro radius, meant one value drove risk, visibility, traversal and difficulty at once. Tuning it was a four way tug of war: make the glow decay generous and the game loses its tension; make it harsh and players die in the dark without understanding why.',
- d:'I committed to the tension instead of softening it. Burning bright is powerful but makes you hunted; fading is safe but blinding. The design rule became: never adjust one of the four systems alone, every glow change had to be evaluated against all four consequences at once, with real mathematical balancing rather than vibes.',
- f:'Playtesting sessions kept exposing states where the loop punished without teaching, a player ambushed in darkness they had no way to anticipate learns nothing. Each pass re tuned glow decay, aggro ranges and light falloff together, and the failures were as instructive as the fixes.',
- o:'The mechanic now reads instantly and carries all five acts, new players understand the trade within a minute of play, without a tutorial. The tuning continues as content grows, which is the honest heart of why this project is still marked in progress.'},
-        {t:'A bot that plays the game better than I do',
- c:'Five acts of platforming meant traversal bugs could hide anywhere, and every level edit risked silently breaking a jump three screens away. Manual QA could not replay every route after every change, and a solo developer replaying his own levels stops seeing them honestly.',
- d:'I built a tile aware traversal bot that walks the entire world, simulating the player\'s actual jump physics against the level geometry, and verifies that every required route is physically clearable, not eyeballed clearable, provably clearable.',
- f:'The bot earned its keep almost immediately: it caught a genuinely impossible jump that I, as the human tester, had signed off on, geometry that looked fine but could not be cleared with the real jump arc.',
- o:'Automated traversal QA is now part of the build process; level edits get verified in seconds rather than replayed by hand for an hour. It is the single best return on effort tool I have built, and the habit, automate the testing you dread, carried into everything since.'},
- {t:'A senior director polish pass, self administered',
- c:'Solo projects drift without an outside eye, nobody tells you the boss telegraphs are unreadable or that act three drags, because nobody but you has played it. The usual solo failure mode is shipping a game only its author can love.',
- d:'I ran a structured director style review of the whole game: playing it cold, logging every issue by discipline, design, art, audio, difficulty, pacing, the way a studio polish pass would, with severity ratings, instead of fixing whatever annoyed me most that day. Then I wrote the full eight document professional suite around it: game design, level design, art style, audio, narrative, technical design, asset provenance and QA.',
-         f:'The review findings drove real rework, not a checklist: enemy readability, act pacing and boss telegraphs all changed materially because the structured pass surfaced problems casual replaying never had.',
- o:'A commercially clean build with documentation at the standard a studio would expect from a professional team, and a repeatable self review ritual that now substitutes, imperfectly but usefully, for the outside eyes a solo developer does not have.'},
-        {t:'A soundtrack made of mathematics',
- c:'Zero external assets was a hard rule, the whole game had to live in one HTML file, and that included every sound in it. There is no audio file to load when there are no files at all.',
-         d:'Every sound is synthesized in code at runtime through WebAudio: the music, the effects, all of it generated from oscillators and envelopes rather than recordings.',
- f:'The constraint turned out to be a teacher, when your instrument is raw waveforms, you learn quickly why certain envelopes feel percussive and others feel soft, because nothing comes for free.',
- o:'A complete, commercially clean audio layer with zero licensing risk and zero download weight, and a working knowledge of sound synthesis that most gameplay programmers never pick up.'},
+        {t:'Where wellness ends and medicine begins',
+ c:'A movement app for older adults is one careless feature away from medical device territory. Score someone against a norm, or hint at a risk reading, and the whole product falls under health regulation, and starts making frightened people feel judged.',
+ d:'I wrote a hard safety boundary before any code: the app motivates, educates and encourages, and never assesses, diagnoses or prescribes. Then I made the build enforce it, a copy gate in CI that fails if words like score, result, risk, fail, normal or senior appear anywhere in the app.',
+ f:'Every feature and every string had to pass that boundary, including ones that looked harmless at first glance. Having it as a failing check rather than a guideline meant nothing slipped through on a tired evening.',
+ o:'The whole app sits inside the general wellness category by construction, and the line is held by the build, not by anyone remembering it.'},
+        {t:'Designing out the guilt',
+ c:'Mainstream fitness keeps people with streaks, leagues and loss aversion nudges. For someone in their sixties that is patronising, and one missed week of a broken streak is often the moment they quietly give up.',
+ d:'Gamification is banned outright. Progress is self comparison only, celebration is scarce and earned, and the sharing circle is inverted: the older adult is always the proud sender, never the monitored subject. Misses are absent from the data model entirely, so the app cannot tattle even by accident.',
+ f:'When a redesign exploration borrowed a lot from a famous streak driven app, I kept its craft and cohesion and rejected its retention mechanics, writing that "ethics soul" into every later brief as a boundary the design could not cross.',
+ o:'An app that earns its daily ten minutes through dignity rather than pressure, and stays complete and respectful for someone who never adds a single contact.'},
+        {t:'Two pivots on the demonstrator',
+ c:'The movement demonstration is the most important visual in the product: the person watching needs to see someone like them, clearly enough to copy safely.',
+ d:'I first tried 3D animation scripted through Blender, and stopped once it was clear the poses could not be verified visually. I then built and merged a complete 21 movement illustrated library. With the Steady redesign I retired that too, in favour of a schematic 2D figure, after a measured renderer spike compared three rendering approaches.',
+ f:'Each pivot was driven by evidence rather than taste: whether output could be checked, and whether it ran smoothly on ordinary phones under load. The spike settled on plain native views on the native animation driver after the JavaScript thread options stuttered.',
+ o:'A demonstrator that runs on any phone, swapped in behind the same movement stage interface, so the change touched nothing else in the app.'},
+        {t:'Shipping solo with an AI pair',
+ c:'One developer, a sizeable codebase, and an AI agent that can write a lot of code very quickly, and can also run away with itself. An unattended run once burned hours looping on a stalled download.',
+ d:'I set strict working rules: one pull request per phase, edits approved rather than fully automatic, decisions specified up front in each brief, and every diff read before merge, with extra scrutiny on anything security sensitive.',
+ f:'The discipline cost some speed per session and saved far more across the project, since nothing reached main that I had not personally checked.',
+ o:'Feature complete, 113 tests passing, every pull request merged to main through review, and a repeatable way of working with AI that keeps a human accountable for every line.'},
       ],
       impact:{
- results:['Everything in the game, the art, the audio, five acts, four named bosses, seven FSM enemy types, four powerup systems, comes out of code, in one single HTML file',
- 'A twelve state architecture (menu through boss encounters to endings) with smooth transitions and persistent data, solo built and holding steady as content grows',
-          'My traversal bot found a jump that was literally impossible to make, before any human tester noticed it',
- 'Behind the game sits an eight document suite, design, technical and QA docs written the way a studio would want them',
-          'Every asset is original, so the whole thing is commercially clean top to bottom'],
- learnings:['One mechanic done properly can carry an entire game, if you accept everything it demands of the design','Automate the testing you dread repeating; the bot has already paid for itself','Working solo, you have to schedule your own honesty, the director style review pass is how I do that']
+ results:['Feature complete with 113 passing tests, every pull request reviewed and merged to main',
+ 'A wellness boundary enforced by the build itself: a CI copy gate blocks clinical or judgemental language',
+          'Accessibility as the floor, not a mode: 17px minimum text, 72px primary touch targets, AAA text contrast, complete with motion and sound switched off',
+          'Offline first, no account, no data sold, and a one time purchase instead of a subscription'],
+ learnings:['Ethics hold up best when they are written as build rules, not intentions','When a medium keeps fighting you, measure the alternatives and pivot early','An AI pair multiplies output, so review discipline has to multiply with it']
       }
     },
- thanks:"He understood. Light is a cost… and worth paying. Go, one flame closer."
+    thanks:"Ten minutes, no scoreboard, nobody to disappoint. Now that's an app I'd actually keep. Thank you, courier."
   },
   house: {
     npc:'KD', role:'game developer', building:'The Courier Office', stamp:null,
@@ -294,11 +293,11 @@ const DELIVERIES = {
     letter:{
       title:'Kingshuk Dholakia', sub:'Game Developer · UTS Games Development graduate · Sydney',
       body:[
- "I build worlds, in Unity, in raw JavaScript, and occasionally out of six letters and a small island. I'm a Bachelor of Science in Games Development graduate from the University of Technology Sydney (2021 to 2025), and every project on this island came out of that journey: Spectrum Ops earned top marks and a formal commendation from my tutor and subject coordinator, Dungeon Golf took the highest possible grade into the UTS Games Showcase and caught the Powerhouse Museum's attention, and Emberlight is my ongoing proof that one developer and one HTML file can hold an entire game.",
+ "I build worlds, in Unity, in raw JavaScript, and occasionally out of six letters and a small island. I'm a Bachelor of Science in Games Development graduate from the University of Technology Sydney (2021 to 2025), and every project on this island came out of that journey: Spectrum Ops earned top marks and a formal commendation from my tutor and subject coordinator, Dungeon Golf took the highest possible grade into the UTS Games Showcase and caught the Powerhouse Museum's attention, and Everyday Strong is the app I'm building now, solo, for the people mainstream fitness forgot.",
  "Under the hood, I care about architecture as much as feel. My Unity and C# work leans on SOLID principles and the patterns that keep codebases scalable. Singleton, Factory, Adapter, along with generics, interfaces, events, delegates and reflection where they earn their complexity. I debug and profile builds properly, write structured documentation, and hold my own in peer code review. On the web side it's JavaScript, WebAudio synthesis, and Three.js.",
  "This site is my resume in playable form: hand wired Three.js, an original synthesized score, and a complete set of low poly models I built in Blender specifically for this island, every building, tree, lantern and the courier you're playing. Nothing here is templated, stock, or borrowed."
       ],
-      tags:['Unity · C#','JavaScript · Three.js','WebAudio','Blender','SOLID & design patterns','UTS Games Development'],
+      tags:['Unity · C#','JavaScript · Three.js','React Native','WebAudio','Blender','SOLID & design patterns','UTS Games Development'],
       links:[['Resume (PDF)','resume.pdf'],['LinkedIn',LI],['Email','mailto:kingshuk.dholakia@gmail.com']],
       sig:'thanks for walking my island. K.D.',
       snapshot:{
@@ -306,13 +305,13 @@ const DELIVERIES = {
  team:'Currently a team of one, looking for yours',
  duration:'BSc Games Development, University of Technology Sydney · 2021 to 2025',
         status:'Open to game development & software engineering roles · Sydney',
-        tools:'Unity, C#, JavaScript, WebAudio API, Three.js, Blender, GitHub, Trello, Miro, Piskel',
+        tools:'Unity, C#, JavaScript, TypeScript, React Native, Expo, WebAudio API, Three.js, Blender, GitHub, Trello, Miro, Piskel',
         resp:'Gameplay and systems programming; mechanics design and balancing; original audio composition and synthesis; project management and milestone planning; structured documentation and peer code review'
       },
       impact:{
  results:['Formal commendation from my tutor and subject coordinator for leadership, technical execution and overall quality on Spectrum Ops, alongside top academic marks',
           'Highest possible grade on Dungeon Golf, earning an invitation to the UTS Games Showcase, praise from professional developers, and a shoutout from the Powerhouse Museum\'s game curator',
- 'A shipped quality solo project in Emberlight: procedural everything, professional documentation, automated QA tooling',
+ 'A feature complete solo app in Everyday Strong: 113 passing tests, offline first, accessibility first, ethics enforced in CI',
  'This island itself. Three.js world, Blender asset set, synthesized score, and the case studies you\'re reading, all built by hand'],
  learnings:['Playtests settle design arguments better than opinions do. I build my process around them',
           'When a dependency dies, decide fast: absorb it or cut it',
@@ -623,7 +622,7 @@ const clouds = new THREE.Group();
 //  ASSET PIPELINE — load, grade to palette, fit, place
 // ============================================================
 const loader = new GLTFLoader();
-const ASSETS = ['cafe','arcade','golfhut','tower','office','shrine','courier',
+const ASSETS = ['cafe','arcade','golfhut','tower','office','studio','courier',
   'tree_round','tree_pine','lantern','mailbox','fence','well','crates','signpost',
   'flowers','rock_small','rock_big','bench_new'];
 const LIB = {};
@@ -645,7 +644,7 @@ function gradeMaterial(mat, tintHex, noRemap=false){
 
 const EMISSIVE = [
   [/^a_door_glow/, 0xff8a3c, 1.6], [/^a_bulb/, 0xfff2d4, 1.2], [/^t_star/, 0xe8b34b, 1.4],
-  [/^l_glass/, 0xffd9a0, 2.0], [/^s_ember/, 0xff8a3c, 2.6], [/^t_ownd$/, 0xe8b34b, .9],
+  [/^l_glass/, 0xffd9a0, 2.0], [/^e_glow/, 0xffc977, 1.1], [/^t_ownd$/, 0xe8b34b, .9],
 ];
 function prepModel(root, {tint, shadow=true, noRemap=false} = {}){
   root.traverse(o=>{
@@ -710,7 +709,7 @@ const STOP_DEFS = [
   { key:'golf',   model:'golfhut', ang:  .58, h:5.2 },
   { key:'tower',  model:'tower',   ang: 1.62, h:9.5 },
   { key:'arcade', model:'arcade',  ang: 2.62, h:5.8 },
-  { key:'shrine', model:null,      ang: 3.66, h:0, npcA:2.4, npcD:3.4 },  // Cinder beside the gate
+  { key:'strong', model:'studio',  ang: 3.66, h:5.4 },
   { key:'house',  model:'office',  ang: 4.72, h:5.6 },
 ];
 
@@ -718,22 +717,10 @@ function buildStops(){
   for (const def of STOP_DEFS){
     const x = Math.cos(def.ang)*RING, z = Math.sin(def.ang)*RING;
     const data = DELIVERIES[def.key];
-    let obj;
-    if (def.model){
-      obj = fitHeight(spawn(def.model, {}), def.h); // bespoke art, no tint pull
-      settle(obj, x, z, Math.atan2(-x, -z), .18); // doors face the island center
-    } else {
-      obj = buildShrine(x, z);
-    }
-    if (def.model) addSolid(obj);            // building footprint box
-    else obj.traverse(o=>{                   // shrine: every stone, post and plinth is solid
-      if (o.isMesh && /^(s_stone|s_plinth|s_g[12]|s_bowl)/.test(o.name)){
-        const b=new THREE.Box3().setFromObject(o);
-        colliders.push({x:(b.min.x+b.max.x)/2, z:(b.min.z+b.max.z)/2,
-          r:Math.max(.3, Math.max(b.max.x-b.min.x, b.max.z-b.min.z)/2*.8)});
-      }
-    });
-    registerOccluder(obj, .32);   // buildings & shrine fade translucent when the player walks behind them
+    const obj = fitHeight(spawn(def.model, {}), def.h);
+    settle(obj, x, z, Math.atan2(-x, -z), .18);   // doors face the island center
+    addSolid(obj);                                 // building footprint box
+    registerOccluder(obj, .32);   // buildings fade translucent when the player walks behind them
     // door-step path blobs toward center
     for(let i=1;i<=4;i++){
       const t=i/5; pathBlob(x*(1-t*.5), z*(1-t*.5), 1.4-t*.5);
@@ -761,21 +748,6 @@ function buildStops(){
   }
   // central ring path
   for(let a=0; a<Math.PI*2; a+=.16) pathBlob(Math.cos(a)*RING*.62, Math.sin(a)*RING*.62, 1.15+rnd()*.3);
-}
-
-// Ember shrine: bespoke GLB — the ember crystal inside it comes alive
-let emberCore, emberLight, emberBaseY = 0;
-function buildShrine(x, z){
-  const g = fitHeight(spawn('shrine', {}), 4.4);
-  g.traverse(o=>{ if (o.isMesh && o.name.startsWith('s_ember')) emberCore = o; });
-  settle(g, x, z, Math.atan2(-x,-z), .16);
-  if (emberCore){
-    emberBaseY = emberCore.position.y + .12;   // lift the resting point clear of the bowl
-    emberLight = new THREE.PointLight(PAL.ember, 28, 16, 2);
-    emberCore.parent.add(emberLight);
-    emberLight.position.copy(emberCore.position);
-  }
-  return g;
 }
 
 // Mailbox hub at island center — bespoke, with animated flag
@@ -815,7 +787,7 @@ function buildNature(){
     for (const d of STOP_DEFS){
       const sx=Math.cos(d.ang)*RING, sz=Math.sin(d.ang)*RING;
       if (Math.hypot(x-sx,z-sz) < 6.5){ clear=false; break; }
-      // also keep clear of each NPC's actual offset spot (e.g. Cinder sits 3.4u off the shrine)
+      // also keep clear of each NPC's actual offset spot beside the door
       const nA = d.npcA ?? 1.7, nD = d.npcD ?? 2.2;
       const nx = sx*.82 + Math.cos(d.ang+nA)*nD, nz = sz*.82 + Math.sin(d.ang+nA)*nD;
       if (Math.hypot(x-nx,z-nz) < 4){ clear=false; break; }
@@ -1743,7 +1715,6 @@ const ENV = (()=>{
     // night accents
     starMat.opacity=cur.night*.9;
     bloom.strength=.32+cur.night*.28;
-    if (emberLight) emberLight.intensity=(26+Math.sin(elapsed*5.2)*6)*(1+cur.night*.8);
     lanternFlames.forEach((f,i)=>{
       const m=f.userData.mode||'idle';
       f.userData.flash = Math.max(0, (f.userData.flash||0) - dt*.9);
@@ -1823,8 +1794,6 @@ function tick(){
   clouds.children.forEach(c=>c.position.applyAxisAngle(UP, dt*.012*c.userData.speed));
   waterGroup.children[1].rotation.z+=dt*.02;
   waterGroup.children[2].scale.setScalar(1.02+Math.sin(t*1.4)*.012);
-  if (emberCore){ emberCore.position.y=emberBaseY + .08 + Math.sin(t*2.1)*.08; emberCore.rotation.y+=dt;
-    if(emberLight) emberLight.position.y=emberCore.position.y; }
   if (mailFlag) mailFlag.rotation.z+=((mailFlagDown?-1.35:0)-mailFlag.rotation.z)*Math.min(1,dt*6);
   // NPC idle bob + envelope markers
   for (const k in STOPS){
