@@ -341,7 +341,7 @@ const app = document.getElementById('app');
 const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
 // MSAA off: the scene renders into post targets and FXAA does the anti-aliasing, so canvas MSAA was pure cost
 const renderer = new THREE.WebGLRenderer({ antialias:false, stencil:false, powerPreference:'high-performance' });
-const DPR_MAX = Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 1.5);
+const DPR_MAX = Math.min(devicePixelRatio, IS_TOUCH ? 1.75 : 2);   // full original sharpness
 renderer.setPixelRatio(DPR_MAX);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -397,39 +397,49 @@ sun.shadow.camera.top=42; sun.shadow.camera.bottom=-42;
 sun.shadow.camera.far=120; sun.shadow.bias=-0.0002; sun.shadow.normalBias=.015;
 scene.add(sun);
 
-// ---- Post chain: Bloom -> Finish (ink outlines + god rays + illustrated grade + tone map) -> FXAA ----
-// One combined finishing pass instead of four: each full-screen pass costs a read + write of every pixel.
-const FinishShader = {
+// ---- Post chain: Ink outlines -> Bloom -> Finish (god rays + illustrated grade + tone map + vignette) -> FXAA ----
+// The look is identical to the original six-pass chain; rays, grade, tone mapping and the warm vignette
+// (formerly a CSS overlay above the canvas) now share one pass, saving three full-screen read/writes.
+const InkShader = {
   uniforms:{ tDiffuse:{value:null}, resolution:{value:new THREE.Vector2(innerWidth,innerHeight)},
-    inkStrength:{value:.55}, inkColor:{value:new THREE.Color(0x2c3a40)},
-    lightPos:{value:new THREE.Vector2(.5,.7)}, rayStrength:{value:0}, rayColor:{value:new THREE.Color(0xfff2cf)},
-    shadowTint:{value:new THREE.Color(0x3a6b70)}, warmHi:{value:new THREE.Color(1.03,.99,.93)},
-    sat:{value:1.07}, lift:{value:.034}, poster:{value:.24}, vig:{value:.24}, toneMappingExposure:{value:1} },
-  defines:{ SRGB_TRANSFER:'', ACES_FILMIC_TONE_MAPPING:'', RAY_STEPS: IS_TOUCH ? 20 : 28 },
+    strength:{value:.55}, inkColor:{value:new THREE.Color(0x2c3a40)} },
   vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader:`
+  uniform sampler2D tDiffuse; uniform vec2 resolution; uniform float strength; uniform vec3 inkColor;
+  varying vec2 vUv;
+  float lum(vec2 o){ return dot(texture2D(tDiffuse, vUv+o/resolution).rgb, vec3(.299,.587,.114)); }
+  void main(){
+    vec4 col=texture2D(tDiffuse, vUv);
+    float tl=lum(vec2(-1., 1.)), tt=lum(vec2(0., 1.)), tr=lum(vec2(1., 1.));
+    float ll=lum(vec2(-1., 0.)),                        rr=lum(vec2(1., 0.));
+    float bl=lum(vec2(-1.,-1.)), bb=lum(vec2(0.,-1.)), br=lum(vec2(1.,-1.));
+    float gx=-tl-2.*ll-bl+tr+2.*rr+br;
+    float gy=-tl-2.*tt-tr+bl+2.*bb+br;
+    float line=smoothstep(.16,.5,sqrt(gx*gx+gy*gy))*strength;
+    gl_FragColor=vec4(mix(col.rgb, inkColor, line), col.a);
+  }`};
+const FinishShader = {
+  uniforms:{ tDiffuse:{value:null},
+    lightPos:{value:new THREE.Vector2(.5,.7)}, rayStrength:{value:0}, rayColor:{value:new THREE.Color(0xfff2cf)},
+    shadowTint:{value:new THREE.Color(0x3a6b70)}, warmHi:{value:new THREE.Color(1.03,.99,.93)},
+    sat:{value:1.07}, lift:{value:.034}, poster:{value:.24}, vig:{value:.18}, toneMappingExposure:{value:1} },
+  defines:{ ACES_FILMIC_TONE_MAPPING:'', RAY_STEPS: IS_TOUCH ? 24 : 36 },
+  vertexShader: InkShader.vertexShader,
+  fragmentShader:`
   precision highp float;
-  uniform sampler2D tDiffuse; uniform vec2 resolution;
-  uniform float inkStrength; uniform vec3 inkColor;
+  uniform sampler2D tDiffuse;
   uniform vec2 lightPos; uniform float rayStrength; uniform vec3 rayColor;
   uniform vec3 shadowTint, warmHi; uniform float sat, lift, poster, vig;
   #include <tonemapping_pars_fragment>
   varying vec2 vUv;
   float lum3(vec3 c){ return dot(c, vec3(.299,.587,.114)); }
-  float lumAt(vec2 o){ return lum3(texture2D(tDiffuse, vUv+o/resolution).rgb); }
   void main(){
     vec3 col=texture2D(tDiffuse, vUv).rgb;
-    // ink outlines (Sobel on luminance)
-    float tl=lumAt(vec2(-1., 1.)), tt=lumAt(vec2(0., 1.)), tr=lumAt(vec2(1., 1.));
-    float ll=lumAt(vec2(-1., 0.)),                          rr=lumAt(vec2(1., 0.));
-    float bl=lumAt(vec2(-1.,-1.)), bb=lumAt(vec2(0.,-1.)), br=lumAt(vec2(1.,-1.));
-    float gx=-tl-2.*ll-bl+tr+2.*rr+br, gy=-tl-2.*tt-tr+bl+2.*bb+br;
-    col=mix(col, inkColor, smoothstep(.16,.5,sqrt(gx*gx+gy*gy))*inkStrength);
-    // god rays: skipped entirely when the sun is off screen (uniform branch, no wasted taps)
-    if (rayStrength > .004){
+    // god rays (identical sampling to the original pass; skipped only when their strength is zero)
+    if (rayStrength > 0.){
       vec2 d=(vUv-lightPos)/float(RAY_STEPS); vec2 sp=vUv; float illum=1., acc=0.;
       for(int i=0;i<RAY_STEPS;i++){ sp-=d; acc+=max(lum3(texture2D(tDiffuse,sp).rgb)-.72,0.)*illum; illum*=.94; }
-      col+=rayColor*acc*rayStrength*(36./float(RAY_STEPS));
+      col+=rayColor*acc*rayStrength;
     }
     // illustrated grade: teal shadows, warm highlights, soft posterize, pastel lift, vignette
     float l=lum3(col);
@@ -438,16 +448,18 @@ const FinishShader = {
     col=mix(col, floor(col*7.)/7., poster);
     col=mix(vec3(lum3(col)), col, sat);
     col=col*(1.-lift)+lift;
-    float edge=smoothstep(.5,.95,distance(vUv, vec2(.5,.46)));
-    col*=1.-edge*vig;
-    col=mix(col, col*vec3(.92,.84,.76), edge*.5);       // warm edge, formerly a separate CSS overlay
-    gl_FragColor=vec4(col,1.);
-    gl_FragColor.rgb=ACESFilmicToneMapping(gl_FragColor.rgb);
-    gl_FragColor=sRGBTransferOETF(gl_FragColor);
+    col*=1.-smoothstep(.55,.95,distance(vUv, vec2(.5,.46)))*vig;
+    // tone map + sRGB (what OutputPass did)
+    vec4 outc=sRGBTransferOETF(vec4(ACESFilmicToneMapping(col),1.));
+    // the warm CSS vignette, reproduced exactly: radial-gradient(ellipse, transparent 62%, rgba(20,12,6,.28) 100%)
+    float r=length((vUv-.5)*2.)/1.41421356;
+    outc.rgb=mix(outc.rgb, vec3(20.,12.,6.)/255., .28*clamp((r-.62)/.38,0.,1.));
+    gl_FragColor=outc;
   }`};
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+const inkPass = new ShaderPass(InkShader); composer.addPass(inkPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), .32, .55, .82);
 composer.addPass(bloom);
 const finishPass = new ShaderPass(FinishShader); composer.addPass(finishPass);
@@ -463,7 +475,7 @@ function warmShaders(async=false){
 }
 function setPostSize(){
   const pr=renderer.getPixelRatio();
-  finishPass.uniforms.resolution.value.set(innerWidth*pr, innerHeight*pr);
+  inkPass.uniforms.resolution.value.set(innerWidth*pr, innerHeight*pr);
   fxaaPass.material.uniforms.resolution.value.set(1/(innerWidth*pr), 1/(innerHeight*pr));
 }
 setPostSize();
@@ -1860,16 +1872,19 @@ const ENV = (()=>{
 
 const UP=new THREE.Vector3(0,1,0);
 const clock=new THREE.Clock();
-// Adaptive resolution: if frames run slow, render fewer pixels; creep back up when there's headroom.
-const perf = { acc:0, n:0, scale:1, calm:0, frame:0 };
+// Safety net, not a quality setting: full resolution always, unless the game is genuinely choppy
+// (under 30 fps for 3 s). Then it steps toward standard 1x (never below) and returns to full
+// sharpness as soon as there's headroom. On any machine that runs smoothly it never activates.
+const perf = { acc:0, n:0, scale:1, calm:0, frame:0, warm:6 };
+const SCALE_FLOOR = Math.min(1, 1/DPR_MAX);
 function governResolution(rawDt){
-  perf.acc+=Math.min(rawDt,.25); perf.n++;     // cap, don't skip: a lone hitch barely moves the average,
-                                               // but a machine that is always slow still gets noticed
-  if (perf.acc<1.5) return;
+  if (perf.warm>0){ perf.warm-=rawDt; return; }  // ignore loading and shader warm-up
+  perf.acc+=Math.min(rawDt,.25); perf.n++;
+  if (perf.acc<3) return;
   const avg=perf.acc/perf.n; perf.acc=0; perf.n=0;
   let sc=perf.scale;
-  if (avg>1/42 && sc>.5){ sc=Math.max(.5, sc-.15); perf.calm=0; }        // under ~42 fps: step down
-  else if (avg<1/55){ if (++perf.calm>=3 && sc<1){ sc=Math.min(1, sc+.1); perf.calm=0; } }
+  if (avg>1/30 && sc>SCALE_FLOOR){ sc=Math.max(SCALE_FLOOR, sc-.25); perf.calm=0; }
+  else if (avg<1/50){ if (++perf.calm>=2 && sc<1){ sc=Math.min(1, sc+.25); perf.calm=0; } }
   else perf.calm=0;
   if (sc!==perf.scale){
     perf.scale=sc;
