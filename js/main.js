@@ -170,7 +170,7 @@ const DELIVERIES = {
  "Pure JavaScript, no engine, no libraries, all algorithm. Built for Dungeon Golf, kept because watching procedural generation think out loud never stops being useful."
       ],
       tags:['JavaScript','BSP','Cellular Automata','Canvas','Built for Dungeon Golf'],
-      links:[['Run it live','https://kingshukd7.github.io/Portfolio/dungeon-generator.html']],
+      links:[['Run it live','tools/dungeon-generator.html']],
  sig:'inscribed by K.D., dungeon conjurer',
       snapshot:{
         role:'Solo developer', team:'1 (tooling for the Dungeon Golf team)', duration:'Built alongside Dungeon Golf',
@@ -206,7 +206,7 @@ const DELIVERIES = {
         "Interactive, instant, and weirdly competitive once you start betting on algorithms. Built to fix Dungeon Golf's enemies; kept because it teaches."
       ],
       tags:['JavaScript','A*','Dijkstra','BFS / DFS','Built for Dungeon Golf'],
-      links:[['Run it live','https://kingshukd7.github.io/Portfolio/pathfinder-playground-fixed.html']],
+      links:[['Run it live','tools/pathfinding-playground.html']],
       sig:'gg, K.D.',
       snapshot:{
         role:'Solo developer', team:'1 (tooling for the Dungeon Golf team)', duration:'Built alongside Dungeon Golf',
