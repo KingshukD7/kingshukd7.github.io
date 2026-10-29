@@ -99,7 +99,7 @@ const DELIVERIES = {
       "…Wait. This postmark. It's from the dungeon."
     ],
     letter:{
- title:'Dungeon Golf', sub:'Solo Unity physics golf dungeon crawler',
+ title:'Dungeon Golf', sub:'Five person team Unity physics golf dungeon crawler · UTS Games Showcase',
       body:[
  "Bogey, the course you keep was only the beginning. Kingshuk and his team of five built an entire dungeon you putt through: physics driven golf shots as your only way to fight, explore, and escape.",
  "The game itself: Dungeon Golf is a top down pixel roguelike where the golf swing is the whole verb set. Ten holes wind through a monster filled dungeon; every stroke is both your movement and your weapon, line up a shot to cross a room, or drive the ball straight through the goblin guarding the pin. Enemies act between your shots, an inventory system lets you build for each run, and a cursed wizard narrates why you are down here putting for your life in the first place.",
