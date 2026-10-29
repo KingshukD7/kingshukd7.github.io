@@ -7,7 +7,6 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
 import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/shaders/FXAAShader.js';
 
@@ -340,13 +339,14 @@ const FINAL_LETTER = {
 // ============================================================
 const app = document.getElementById('app');
 const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
-const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.75 : 2));
+// MSAA off: the scene renders into post targets and FXAA does the anti-aliasing, so canvas MSAA was pure cost
+const renderer = new THREE.WebGLRenderer({ antialias:false, stencil:false, powerPreference:'high-performance' });
+const DPR_MAX = Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 1.5);
+renderer.setPixelRatio(DPR_MAX);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
 app.appendChild(renderer.domElement);
 renderer.domElement.style.touchAction='none';
 renderer.domElement.addEventListener('contextmenu', e=>e.preventDefault());
@@ -397,81 +397,73 @@ sun.shadow.camera.top=42; sun.shadow.camera.bottom=-42;
 sun.shadow.camera.far=120; sun.shadow.bias=-0.0002; sun.shadow.normalBias=.015;
 scene.add(sun);
 
-// ---- Post chain: Ink outlines -> Bloom -> God rays -> Illustrated grade -> Output -> FXAA ----
-const InkShader = {
+// ---- Post chain: Bloom -> Finish (ink outlines + god rays + illustrated grade + tone map) -> FXAA ----
+// One combined finishing pass instead of four: each full-screen pass costs a read + write of every pixel.
+const FinishShader = {
   uniforms:{ tDiffuse:{value:null}, resolution:{value:new THREE.Vector2(innerWidth,innerHeight)},
-    strength:{value:.55}, inkColor:{value:new THREE.Color(0x2c3a40)} },
+    inkStrength:{value:.55}, inkColor:{value:new THREE.Color(0x2c3a40)},
+    lightPos:{value:new THREE.Vector2(.5,.7)}, rayStrength:{value:0}, rayColor:{value:new THREE.Color(0xfff2cf)},
+    shadowTint:{value:new THREE.Color(0x3a6b70)}, warmHi:{value:new THREE.Color(1.03,.99,.93)},
+    sat:{value:1.07}, lift:{value:.034}, poster:{value:.24}, vig:{value:.24}, toneMappingExposure:{value:1} },
+  defines:{ SRGB_TRANSFER:'', ACES_FILMIC_TONE_MAPPING:'', RAY_STEPS: IS_TOUCH ? 20 : 28 },
   vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader:`
-  uniform sampler2D tDiffuse; uniform vec2 resolution; uniform float strength; uniform vec3 inkColor;
+  precision highp float;
+  uniform sampler2D tDiffuse; uniform vec2 resolution;
+  uniform float inkStrength; uniform vec3 inkColor;
+  uniform vec2 lightPos; uniform float rayStrength; uniform vec3 rayColor;
+  uniform vec3 shadowTint, warmHi; uniform float sat, lift, poster, vig;
+  #include <tonemapping_pars_fragment>
   varying vec2 vUv;
-  float lum(vec2 o){ return dot(texture2D(tDiffuse, vUv+o/resolution).rgb, vec3(.299,.587,.114)); }
-  void main(){
-    vec4 col=texture2D(tDiffuse, vUv);
-    float tl=lum(vec2(-1., 1.)), tt=lum(vec2(0., 1.)), tr=lum(vec2(1., 1.));
-    float ll=lum(vec2(-1., 0.)),                        rr=lum(vec2(1., 0.));
-    float bl=lum(vec2(-1.,-1.)), bb=lum(vec2(0.,-1.)), br=lum(vec2(1.,-1.));
-    float gx=-tl-2.*ll-bl+tr+2.*rr+br;
-    float gy=-tl-2.*tt-tr+bl+2.*bb+br;
-    float line=smoothstep(.16,.5,sqrt(gx*gx+gy*gy))*strength;
-    gl_FragColor=vec4(mix(col.rgb, inkColor, line), col.a);
-  }`};
-const RaysShader = {
-  uniforms:{ tDiffuse:{value:null}, lightPos:{value:new THREE.Vector2(.5,.7)},
-    strength:{value:0}, rayColor:{value:new THREE.Color(0xfff2cf)} },
-  vertexShader: InkShader.vertexShader,
-  fragmentShader:`
-  uniform sampler2D tDiffuse; uniform vec2 lightPos; uniform float strength; uniform vec3 rayColor;
-  varying vec2 vUv;
+  float lum3(vec3 c){ return dot(c, vec3(.299,.587,.114)); }
+  float lumAt(vec2 o){ return lum3(texture2D(tDiffuse, vUv+o/resolution).rgb); }
   void main(){
     vec3 col=texture2D(tDiffuse, vUv).rgb;
-    vec2 d=(vUv-lightPos)/${IS_TOUCH?'24.0':'36.0'};
-    vec2 sPos=vUv; float illum=1.0; float acc=0.0;
-    for(int i=0;i<${IS_TOUCH?24:36};i++){
-      sPos-=d;
-      float l=dot(texture2D(tDiffuse,sPos).rgb, vec3(.299,.587,.114));
-      acc+=max(l-.72,0.)*illum; illum*=.94;
+    // ink outlines (Sobel on luminance)
+    float tl=lumAt(vec2(-1., 1.)), tt=lumAt(vec2(0., 1.)), tr=lumAt(vec2(1., 1.));
+    float ll=lumAt(vec2(-1., 0.)),                          rr=lumAt(vec2(1., 0.));
+    float bl=lumAt(vec2(-1.,-1.)), bb=lumAt(vec2(0.,-1.)), br=lumAt(vec2(1.,-1.));
+    float gx=-tl-2.*ll-bl+tr+2.*rr+br, gy=-tl-2.*tt-tr+bl+2.*bb+br;
+    col=mix(col, inkColor, smoothstep(.16,.5,sqrt(gx*gx+gy*gy))*inkStrength);
+    // god rays: skipped entirely when the sun is off screen (uniform branch, no wasted taps)
+    if (rayStrength > .004){
+      vec2 d=(vUv-lightPos)/float(RAY_STEPS); vec2 sp=vUv; float illum=1., acc=0.;
+      for(int i=0;i<RAY_STEPS;i++){ sp-=d; acc+=max(lum3(texture2D(tDiffuse,sp).rgb)-.72,0.)*illum; illum*=.94; }
+      col+=rayColor*acc*rayStrength*(36./float(RAY_STEPS));
     }
-    gl_FragColor=vec4(col+rayColor*acc*strength, 1.);
-  }`};
-const GradeShader = {
-  uniforms:{ tDiffuse:{value:null}, shadowTint:{value:new THREE.Color(0x3a6b70)},
-    warmHi:{value:new THREE.Color(1.03,.99,.93)}, sat:{value:1.07},
-    lift:{value:.034}, poster:{value:.24}, vig:{value:.18} },
-  vertexShader: InkShader.vertexShader,
-  fragmentShader:`
-  uniform sampler2D tDiffuse; uniform vec3 shadowTint, warmHi;
-  uniform float sat, lift, poster, vig;
-  varying vec2 vUv;
-  void main(){
-    vec3 col=texture2D(tDiffuse, vUv).rgb;
-    float l=dot(col, vec3(.299,.587,.114));
-    // teal shadows (the LUT feel), gently warm highlights
+    // illustrated grade: teal shadows, warm highlights, soft posterize, pastel lift, vignette
+    float l=lum3(col);
     col=mix(col, shadowTint, pow(1.-l,2.6)*.14);
     col=mix(col, col*warmHi, smoothstep(.55,1.,l)*.4);
-    // soft posterize toward flat cel regions
     col=mix(col, floor(col*7.)/7., poster);
-    // saturation + pastel lift
-    col=mix(vec3(dot(col,vec3(.299,.587,.114))), col, sat);
+    col=mix(vec3(lum3(col)), col, sat);
     col=col*(1.-lift)+lift;
-    // gentle vignette
-    float d=distance(vUv, vec2(.5,.46));
-    col*=1.-smoothstep(.55,.95,d)*vig;
+    float edge=smoothstep(.5,.95,distance(vUv, vec2(.5,.46)));
+    col*=1.-edge*vig;
+    col=mix(col, col*vec3(.92,.84,.76), edge*.5);       // warm edge, formerly a separate CSS overlay
     gl_FragColor=vec4(col,1.);
+    gl_FragColor.rgb=ACESFilmicToneMapping(gl_FragColor.rgb);
+    gl_FragColor=sRGBTransferOETF(gl_FragColor);
   }`};
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const inkPass = new ShaderPass(InkShader); composer.addPass(inkPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), .32, .55, .82);
 composer.addPass(bloom);
-const raysPass = new ShaderPass(RaysShader); composer.addPass(raysPass);
-const gradePass = new ShaderPass(GradeShader); composer.addPass(gradePass);
-composer.addPass(new OutputPass());
+const finishPass = new ShaderPass(FinishShader); composer.addPass(finishPass);
 const fxaaPass = new ShaderPass(FXAAShader); composer.addPass(fxaaPass);
+// Shader warm-up must target the post buffer: compiling against the screen would build the
+// tone-mapped variants, which the scene never uses (it renders into the composer first).
+function warmShaders(async=false){
+  const prev=renderer.getRenderTarget();
+  renderer.setRenderTarget(composer.renderTarget1);
+  const r = async && renderer.compileAsync ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), Promise.resolve());
+  renderer.setRenderTarget(prev);
+  return r;
+}
 function setPostSize(){
   const pr=renderer.getPixelRatio();
-  inkPass.uniforms.resolution.value.set(innerWidth*pr, innerHeight*pr);
+  finishPass.uniforms.resolution.value.set(innerWidth*pr, innerHeight*pr);
   fxaaPass.material.uniforms.resolution.value.set(1/(innerWidth*pr), 1/(innerHeight*pr));
 }
 setPostSize();
@@ -579,6 +571,7 @@ function pathBlob(x,z,s){
   const m = new THREE.Mesh(new THREE.CircleGeometry(s, 10), pathMat);
   m.rotation.x = -Math.PI/2; m.rotation.z = rnd()*Math.PI;
   m.position.set(x, groundY(x,z)+.03, z); m.receiveShadow = true; world.add(m);
+  STATIC.push(m);
 }
 const _gRay = new THREE.Raycaster();
 const _gOrigin = new THREE.Vector3(), _gDown = new THREE.Vector3(0,-1,0);
@@ -599,7 +592,7 @@ function groundY(x,z){
 // Clouds: soft low-poly clusters drifting
 const clouds = new THREE.Group();
 {
-  var cloudMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:1, transparent:true, opacity:.92, fog:false});
+  var cloudMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:1, transparent:true, opacity:.85, fog:false});
   const mat = cloudMat;
   for(let i=0;i<9;i++){
     const c = new THREE.Group();
@@ -697,6 +690,85 @@ function recenter(root){
 }
 function spawn(name, opts={}){ return recenter(prepModel(LIB[name].clone(true), opts)); }
 
+// ---- Static batching: one draw call per material look instead of one per model part ----
+// The island has ~750 meshes but only ~27k triangles, so draw calls (CPU) were the real cost,
+// doubled again by the shadow pass. Parts that never move are merged at build time.
+// Colour is baked into vertex colours, so parts that differ only by colour still share one draw call.
+function matKey(m){
+  return [m.type, m.emissive&&m.emissive.getHexString(), m.emissiveIntensity, m.roughness, m.metalness,
+    m.flatShading, m.side, m.transparent, m.opacity, m.fog].join('|');
+}
+const _bkInv=new THREE.Matrix4(), _bkM=new THREE.Matrix4(), _bkN=new THREE.Matrix3(), _bkV=new THREE.Vector3();
+function bake(meshes, parent){
+  if (meshes.length<2) return;
+  parent.updateMatrixWorld(true);
+  _bkInv.copy(parent.matrixWorld).invert();
+  const groups=new Map();
+  for (const o of meshes){
+    const k=matKey(o.material)+'|'+o.castShadow+'|'+o.receiveShadow;
+    if (!groups.has(k)) groups.set(k,[]);
+    groups.get(k).push(o);
+  }
+  for (const list of groups.values()){
+    const src=list[0];
+    const oneColor = list.every(o=>!o.material.vertexColors && !o.geometry.attributes.color && o.material.color.equals(src.material.color));
+    let n=0; for (const o of list){ const g=o.geometry; n += g.index ? g.index.count : g.attributes.position.count; }
+    const P=new Float32Array(n*3), N=new Float32Array(n*3), C=oneColor?null:new Float32Array(n*3);
+    let w=0;
+    for (const o of list){
+      let g=o.geometry;
+      if (!g.attributes.normal){ g=g.clone(); g.computeVertexNormals(); }
+      _bkM.multiplyMatrices(_bkInv, o.matrixWorld); _bkN.getNormalMatrix(_bkM);
+      const flip=_bkM.determinant()<0, pos=g.attributes.position, nor=g.attributes.normal, idx=g.index;
+      const col=o.material.vertexColors?g.attributes.color:null, mc=o.material.color;
+      const cnt=idx?idx.count:pos.count;
+      for (let t=0;t<cnt;t+=3) for (let c=0;c<3;c++){
+        const vi=t+(flip?2-c:c);                       // mirrored parts: keep faces pointing outward
+        const v=idx?idx.getX(vi):vi, j=w*3;
+        _bkV.fromBufferAttribute(pos,v).applyMatrix4(_bkM); P[j]=_bkV.x; P[j+1]=_bkV.y; P[j+2]=_bkV.z;
+        _bkV.fromBufferAttribute(nor,v).applyMatrix3(_bkN).normalize(); N[j]=_bkV.x; N[j+1]=_bkV.y; N[j+2]=_bkV.z;
+        if (C){ C[j]=mc.r*(col?col.getX(v):1); C[j+1]=mc.g*(col?col.getY(v):1); C[j+2]=mc.b*(col?col.getZ(v):1); }
+        w++;
+      }
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(P,3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(N,3));
+    let mat=src.material;
+    if (C){ geo.setAttribute('color', new THREE.BufferAttribute(C,3)); mat=src.material.clone(); mat.color.setRGB(1,1,1); mat.vertexColors=true; }
+    geo.computeBoundingSphere();
+    const m=new THREE.Mesh(geo, mat);
+    m.castShadow=src.castShadow; m.receiveShadow=src.receiveShadow;
+    parent.add(m);
+  }
+  for (const o of meshes) o.removeFromParent();
+}
+// leaf meshes under root, skipping any whose name (or an ancestor's) matches `keep`
+function staticLeaves(root, keep){
+  const out=[];
+  root.traverse(o=>{
+    if (!o.isMesh || o.isInstancedMesh || o.children.length) return;
+    for (let n=o; n && n!==root.parent; n=n.parent) if (keep && keep.test(n.name)) return;
+    out.push(o);
+  });
+  return out;
+}
+function bakeObject(root, keep){ bake(staticLeaves(root, keep), root); return root; }
+// characters: the body merges into one mesh and each limb into its pivot, so the walk cycle still swings
+function bakeCharacter(group, limbs){
+  const pivots=Object.values(limbs);
+  pivots.forEach(pv=>{ pv.name='limb'; bake(staticLeaves(pv), pv); });
+  bake(staticLeaves(group, /^limb$/), group);
+}
+// loose decorations (rocks, props, path stones) all merge into a handful of world meshes
+const STATIC=[];
+function bakeStaticWorld(){
+  const meshes=[]; for (const r of STATIC) meshes.push(...staticLeaves(r));
+  bake(meshes, world);
+  for (const r of STATIC) if (r.parent && !r.isMesh) r.removeFromParent();
+  STATIC.length=0;
+}
+
 // ============================================================
 //  WORLD LAYOUT — six stops around a ring + mailbox hub
 // ============================================================
@@ -720,6 +792,7 @@ function buildStops(){
     const obj = fitHeight(spawn(def.model, {}), def.h);
     settle(obj, x, z, Math.atan2(-x, -z), .18);   // doors face the island center
     addSolid(obj);                                 // building footprint box
+    bakeObject(obj);
     registerOccluder(obj, .32);   // buildings fade translucent when the player walks behind them
     // door-step path blobs toward center
     for(let i=1;i<=4;i++){
@@ -767,11 +840,12 @@ function buildMailbox(){
     mailFlag.attach(stick); if (flag) mailFlag.attach(flag);
   } else mailFlag = new THREE.Group();
   settle(g, 0, 2.5, .4, .07);
+  bakeObject(g, /^m_flag/);                       // flag + stick stay live for the drop animation
   interactables.push({ id:'mailbox', pos:new THREE.Vector3(0, 0, 2.5), radius:2.8,
     label:'Collect the <b>letters</b>', type:'mailbox', get relabel(){ return state.finaleDone ? 'Read <b>your</b> letter again' : null; } });
   colliders.push({x:0, z:2.5, r:.6});
   // welcome bench + present
-  addSolid(settle(fitHeight(spawn('bench_new',{}),1.15), 2.8, 4.6, -.7, .09));
+  STATIC.push(addSolid(settle(fitHeight(spawn('bench_new',{}),1.15), 2.8, 4.6, -.7, .09)));
 }
 
 // Nature scatter
@@ -801,6 +875,7 @@ function buildNature(){
     const tr = fitHeight(spawn(kind,{}), h);
     settle(tr, t.x, t.z, rnd()*Math.PI*2, .16);
     addSolid(tr, {circle:true, shrink:.5, minR:.55});
+    bakeObject(tr);
     registerOccluder(tr);
   });
   // rocks near cliff edge
@@ -809,6 +884,7 @@ function buildNature(){
     const rock = fitHeight(spawn(i%2?'rock_small':'rock_big',{}), .9+rnd()*1.4);
     settle(rock, Math.cos(a)*r, Math.sin(a)*r, rnd()*Math.PI*2, .22);
     addSolid(rock, {circle:true, shrink:.6});
+    STATIC.push(rock);
   }
 }
 
@@ -866,21 +942,21 @@ function buildProps(){
   // stone well near the plaza
   const well = fitHeight(spawn('well', {}), 2.3);
   settle(well, 4.8, -1.2, .6, .1);
-  addSolid(well, {circle:true, shrink:.6});
+  addSolid(well, {circle:true, shrink:.6}); STATIC.push(well);
   // crates beside the café and the arcade
   for (const [key,dx,dz] of [['cafe',2.6,1.4],['arcade',-2.2,1.8]]){
     const d=STOP_DEFS.find(v=>v.key===key);
     const x=Math.cos(d.ang)*RING+dx, z=Math.sin(d.ang)*RING+dz;
     const c=fitHeight(spawn('crates',{}),1.0);
     settle(c, x, z, rnd()*Math.PI, .08);
-    addSolid(c, {circle:true, shrink:.6});
+    addSolid(c, {circle:true, shrink:.6}); STATIC.push(c);
   }
   // signposts at two path junctions
   for (const a of [.1, 2.1]){
     const x=Math.cos(a)*RING*.62, z=Math.sin(a)*RING*.62;
     const sp=fitHeight(spawn('signpost',{}),2.0);
     settle(sp, x+1.6, z+1.2, a+.8, .1);
-    addSolid(sp, {circle:true, shrink:.4, minR:.25});
+    addSolid(sp, {circle:true, shrink:.4, minR:.25}); STATIC.push(sp);
   }
   // fences skirting the outer path — placed midway between stops, tilted to follow the slope
   const angs = STOP_DEFS.map(d=>d.ang).sort((a,b)=>a-b);
@@ -904,6 +980,7 @@ function buildProps(){
     f.position.y=(y1+y2)/2 - (box.min.y - f.position.y) - .03;
     for (const tt of [-.45,-.22,0,.22,.45])
       colliders.push({x:fx+dir.x*L*tt, z:fz+dir.z*L*tt, r:.24});
+    STATIC.push(f);
   }
   // flower patches scattered in the grass
   for (let i=0;i<9;i++){
@@ -915,7 +992,7 @@ function buildProps(){
       if (Math.hypot(x-Math.cos(d.ang)*RING, z-Math.sin(d.ang)*RING)<5){ clear=false; break; }
     if (!clear) continue;
     const fl=settle(fitHeight(spawn('flowers',{}), .45+rnd()*.2), x, z, rnd()*Math.PI*2, .06);
-    addSolid(fl, {circle:true, shrink:.55, minR:.35});
+    addSolid(fl, {circle:true, shrink:.55, minR:.35}); STATIC.push(fl);
   }
 }
 
@@ -931,16 +1008,10 @@ function refreshLanterns(){
     f.material.emissive.set(done ? 0xffc46a : 0xffb35c);
     f.material.color.set(done ? 0xfff0d0 : 0xffd9a0);
     if (done && !wasDone){
-      // light-up moment: flash + a real light source is born
+      // light-up moment: flash + the lantern's real light switches on
       f.userData.flash = 1;
-      if (!lanternLights[d.key]){
-        const wp = new THREE.Vector3(); f.getWorldPosition(wp);
-        const li = new THREE.PointLight(0xffcf8a, 0, 15, 2);   // wider reach so it lights the ground below
-        li.position.copy(wp);
-        li.position.y += .2;   // sit the source at the flame, a touch above the glass centre
-        scene.add(li);
-        lanternLights[d.key] = li;
-      }
+      const li = prepLanternLight(d.key);
+      li.userData.lit = true; li.visible = li.userData.ready;
     }
     if (lanternBeams[d.key]){
       const b = lanternBeams[d.key];
@@ -951,6 +1022,23 @@ function refreshLanterns(){
 }
 const lanternBeams = {};
 const lanternLights = {};
+// A new light changes every lit material's shader. Creating it the moment a letter closed caused a
+// recompile stutter right on the confetti. Instead the light is made (hidden) when the conversation
+// starts and its shaders compile in the background; it only switches on once they're ready.
+function prepLanternLight(key){
+  let li = lanternLights[key];
+  if (li) return li;
+  const f = lanternByKey[key];
+  li = new THREE.PointLight(0xffcf8a, 0, 15, 2);          // wide reach so it pools on the ground below
+  if (f){ f.getWorldPosition(li.position); li.position.y += .2; }
+  li.userData = { ready:false, lit:false };
+  scene.add(li);
+  lanternLights[key] = li;
+  const done = ()=>{ li.userData.ready = true; li.visible = li.userData.lit; };
+  warmShaders(true).then(done, done);
+  li.visible = false;                                       // the compile request already captured the lit state
+  return li;
+}
 function buildLanterns(){
   for (const d of STOP_DEFS){
     const a = d.ang + .45;
@@ -963,6 +1051,7 @@ function buildLanterns(){
     lanternByKey[d.key]=flame;
     settle(g, x, z, 0, .12);
     addSolid(g, {circle:true, shrink:.35, minR:.3});
+    bakeObject(g, /^l_glass/);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(.14,.22,7,10,1,true),
       new THREE.MeshBasicMaterial({ color:0xf3c258, transparent:true, opacity:0,
         blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide, fog:false }));
@@ -988,6 +1077,7 @@ function addSolid(obj, opts={}){
     boxColliders.push({minx:cx-(box.max.x-box.min.x)/2*sh, maxx:cx+(box.max.x-box.min.x)/2*sh,
                        minz:cz-(box.max.z-box.min.z)/2*sh, maxz:cz+(box.max.z-box.min.z)/2*sh});
   }
+  return obj;
 }
 
 function makeCharacter(tints={}){
@@ -1028,6 +1118,7 @@ function makeCharacter(tints={}){
     limbs[key] = pivot;
   }
   const group = new THREE.Group(); group.add(root);
+  bakeCharacter(group, limbs);
   return { group, limbs, root, phase: 0 };
 }
 
@@ -1040,13 +1131,15 @@ function buildCourier(){
   world.add(courier.group);
 }
 
-// Camera-blocking foliage fades so the player and tracker stay visible under trees
-const occluders=[];
+// Camera-blocking trees & buildings fade so the player stays visible behind them.
+// Materials stay opaque (no sorting, no blending) and only become transparent while actually faded.
+const occluders=[], occluderRoots=[];
 function registerOccluder(root, fadeTo=.18){
   const mats=[];
-  root.traverse(o=>{ if(o.isMesh){ const ms=Array.isArray(o.material)?o.material:[o.material];
-    ms.forEach(m=>{ m.transparent=true; mats.push(m); }); } });
-  occluders.push({root, mats, target:1, fadeTo});
+  root.traverse(o=>{ if(o.isMesh){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>mats.push(m)); } });
+  const oc={root, mats, target:1, op:1, fadeTo};
+  root.userData.occluder=oc;
+  occluders.push(oc); occluderRoots.push(root);
 }
 const _ocRay=new THREE.Raycaster(); const _ocDir=new THREE.Vector3();
 function updateOccluders(dt){
@@ -1056,19 +1149,18 @@ function updateOccluders(dt){
   _ocDir.set(cp.x-camera.position.x, cp.y+1-camera.position.y, cp.z-camera.position.z);
   const dist=_ocDir.length(); _ocDir.normalize();
   _ocRay.set(camera.position, _ocDir); _ocRay.far=dist;
-  const hits=_ocRay.intersectObjects(occluders.map(o=>o.root), true);
-  for (const h of hits){
-    let node=h.object;
-    while(node){
-      const oc=occluders.find(o=>o.root===node);
-      if (oc){ oc.target=oc.fadeTo; break; }
-      node=node.parent;
-    }
+  for (const h of _ocRay.intersectObjects(occluderRoots, true)){
+    for (let node=h.object; node; node=node.parent)
+      if (node.userData.occluder){ node.userData.occluder.target=node.userData.occluder.fadeTo; break; }
   }
   for (const o of occluders){
+    if (o.op===o.target) continue;                       // settled: nothing to touch this frame
+    o.op += (o.target-o.op)*Math.min(1,dt*6);
+    if (Math.abs(o.op-o.target)<.004) o.op=o.target;
+    const faded = o.op<.999;
     for (const m of o.mats){
-      m.opacity += (o.target-m.opacity)*Math.min(1,dt*6);
-      m.depthWrite = m.opacity>.6;
+      if (m.transparent!==faded){ m.transparent=faded; m.needsUpdate=true; }
+      m.opacity=o.op; m.depthWrite=o.op>.6;
     }
   }
 }
@@ -1419,6 +1511,7 @@ function doInteract(){
     showLetter(D.letter, `Delivered to ${D.npc} · ${D.building}`, D.stamp, null);
     return;
   }
+  prepLanternLight(nearest.id);                 // shaders warm up while you read
   showDialogue(`${D.npc} — ${D.role}`, D.dialog, ()=>{
     showLetter(D.letter, `Delivered to ${D.npc} · ${D.building}`, D.stamp, ()=>{
       state.delivered.add(nearest.id); updateCount();
@@ -1661,60 +1754,57 @@ const ENV = (()=>{
   const cur = { top:C(0), bot:C(0), fog:C(0), sunC:C(0xffffff), sunI:2, hemiI:.85, exp:1.12, night:0 };
   let firstFrame = true;
 
-  function sample(h){
+  const _tgt = { top:C(0), bot:C(0), fog:C(0), sunC:C(0), sunI:0, hemiI:0, exp:0 };
+  const _moon = C(0xb8cdf0), _waterBase = C(PAL.waterDeep);
+  function sample(h){          // writes into _tgt, no allocation
     let a=KEYS[0], b=KEYS[KEYS.length-1];
     for (let i=0;i<KEYS.length-1;i++)
       if (h>=KEYS[i][0] && h<=KEYS[i+1][0]){ a=KEYS[i]; b=KEYS[i+1]; break; }
     const t=(h-a[0])/Math.max(.001,b[0]-a[0]);
-    return {
-      top:a[1].clone().lerp(b[1],t), bot:a[2].clone().lerp(b[2],t),
-      fog:a[3].clone().lerp(b[3],t), sunC:a[4].clone().lerp(b[4],t),
-      sunI:THREE.MathUtils.lerp(a[5],b[5],t), hemiI:THREE.MathUtils.lerp(a[6],b[6],t),
-      exp:THREE.MathUtils.lerp(a[7],b[7],t),
-    };
+    _tgt.top.copy(a[1]).lerp(b[1],t); _tgt.bot.copy(a[2]).lerp(b[2],t);
+    _tgt.fog.copy(a[3]).lerp(b[3],t); _tgt.sunC.copy(a[4]).lerp(b[4],t);
+    _tgt.sunI=THREE.MathUtils.lerp(a[5],b[5],t); _tgt.hemiI=THREE.MathUtils.lerp(a[6],b[6],t);
+    _tgt.exp=THREE.MathUtils.lerp(a[7],b[7],t);
+    return _tgt;
   }
 
-  function update(dt, elapsed){
+  // Sky, fog, sun and water follow the real clock, so they change imperceptibly:
+  // recompute them 4x a second instead of every frame. Lantern flicker below stays per-frame.
+  let envAcc = 0;
+  function applyEnv(step){
     const now=new Date();
     const hour=now.getHours()+now.getMinutes()/60+now.getSeconds()/3600;
     const tgt=sample(hour);
     const night=THREE.MathUtils.clamp(1-(tgt.sunI-.26)/1.4, 0, 1);
-    const sunI=tgt.sunI, hemiI=tgt.hemiI;
-    // smooth toward targets (snap on first frame)
-    const k=firstFrame?1:Math.min(1,dt*.8); firstFrame=false;
+    const k=firstFrame?1:Math.min(1,step*.8); firstFrame=false;
     cur.top.lerp(tgt.top,k); cur.bot.lerp(tgt.bot,k); cur.fog.lerp(tgt.fog,k);
     cur.sunC.lerp(tgt.sunC,k);
-    cur.sunI+=(sunI-cur.sunI)*k; cur.hemiI+=(hemiI-cur.hemiI)*k;
+    cur.sunI+=(tgt.sunI-cur.sunI)*k; cur.hemiI+=(tgt.hemiI-cur.hemiI)*k;
     cur.exp+=(tgt.exp-cur.exp)*k; cur.night+=(night-cur.night)*k;
-
-    // apply: sky vertex colors
     const attr=skyMesh.geometry.attributes.color;
     for(let i=0;i<skyT.length;i++){
       const t=skyT[i];
-      attr.setXYZ(i,
-        cur.bot.r+(cur.top.r-cur.bot.r)*t,
-        cur.bot.g+(cur.top.g-cur.bot.g)*t,
-        cur.bot.b+(cur.top.b-cur.bot.b)*t);
+      attr.setXYZ(i, cur.bot.r+(cur.top.r-cur.bot.r)*t, cur.bot.g+(cur.top.g-cur.bot.g)*t, cur.bot.b+(cur.top.b-cur.bot.b)*t);
     }
     attr.needsUpdate=true;
     scene.fog.color.copy(cur.fog);
-    scene.fog.near=60; scene.fog.far=150;
     // sun arc: rises east, sets west; below horizon at night it becomes moonlight
     const dayT=THREE.MathUtils.clamp((hour-6)/12,0,1);
-    if (cur.night<.85){
-      const a=dayT*Math.PI;
-      sun.position.set(Math.cos(a)*36, Math.sin(a)*34+4, 16);
-    } else {
-      const m=((hour+6)%24)/12*Math.PI;
-      sun.position.set(Math.cos(m)*30, Math.abs(Math.sin(m))*26+8, -14);
-    }
+    if (cur.night<.85){ const a=dayT*Math.PI; sun.position.set(Math.cos(a)*36, Math.sin(a)*34+4, 16); }
+    else { const m=((hour+6)%24)/12*Math.PI; sun.position.set(Math.cos(m)*30, Math.abs(Math.sin(m))*26+8, -14); }
     sun.intensity=Math.max(cur.sunI, .55);
-    sun.color.copy(cur.night>.8 ? new THREE.Color(0xb8cdf0) : cur.sunC);
+    sun.color.copy(cur.night>.8 ? _moon : cur.sunC);
     hemi.intensity=cur.hemiI;
-    renderer.toneMappingExposure=cur.exp;
-    // night accents
+    finishPass.uniforms.toneMappingExposure.value=cur.exp;
     starMat.opacity=cur.night*.9;
     bloom.strength=.32+cur.night*.28;
+    cloudMat.color.setScalar(1-cur.night*.45);
+    waterMats.deep.color.copy(_waterBase).lerp(cur.top,.35).multiplyScalar(1-cur.night*.5);
+  }
+
+  function update(dt, elapsed){
+    envAcc+=dt;
+    if (firstFrame || envAcc>=.25){ applyEnv(envAcc); envAcc=0; }
     lanternFlames.forEach((f,i)=>{
       const m=f.userData.mode||'idle';
       f.userData.flash = Math.max(0, (f.userData.flash||0) - dt*.9);
@@ -1745,11 +1835,6 @@ const ENV = (()=>{
       b.material.opacity += (want-b.material.opacity)*.06;
       b.rotation.y += .004;
     }
-    // clouds
-    cloudMat.opacity=.85;
-    cloudMat.color.setScalar(1-cur.night*.45);
-    // water follows the sky
-    waterMats.deep.color.copy(new THREE.Color(PAL.waterDeep).lerp(cur.top,.35).multiplyScalar(1-cur.night*.5));
   }
 
   const _sunV = new THREE.Vector3();
@@ -1758,9 +1843,9 @@ const ENV = (()=>{
     _sunV.copy(sun.position).normalize().multiplyScalar(300).add(camera.position);
     _sunV.project(camera);
     const onScreen = _sunV.z < 1 && _sunV.x>-1.4 && _sunV.x<1.4 && _sunV.y>-1.4 && _sunV.y<1.4;
-    raysPass.uniforms.lightPos.value.set(_sunV.x*.5+.5, _sunV.y*.5+.5);
+    finishPass.uniforms.lightPos.value.set(_sunV.x*.5+.5, _sunV.y*.5+.5);
     const target = onScreen ? .5*(1-cur.night*.9) : 0;
-    raysPass.uniforms.strength.value += (target - raysPass.uniforms.strength.value)*.06;
+    finishPass.uniforms.rayStrength.value += (target - finishPass.uniforms.rayStrength.value)*.06;
   }
   function updateChip(){
     const el=document.getElementById('envchip'); if(!el) return;
@@ -1775,9 +1860,28 @@ const ENV = (()=>{
 
 const UP=new THREE.Vector3(0,1,0);
 const clock=new THREE.Clock();
+// Adaptive resolution: if frames run slow, render fewer pixels; creep back up when there's headroom.
+const perf = { acc:0, n:0, scale:1, calm:0, frame:0 };
+function governResolution(rawDt){
+  perf.acc+=Math.min(rawDt,.25); perf.n++;     // cap, don't skip: a lone hitch barely moves the average,
+                                               // but a machine that is always slow still gets noticed
+  if (perf.acc<1.5) return;
+  const avg=perf.acc/perf.n; perf.acc=0; perf.n=0;
+  let sc=perf.scale;
+  if (avg>1/42 && sc>.5){ sc=Math.max(.5, sc-.15); perf.calm=0; }        // under ~42 fps: step down
+  else if (avg<1/55){ if (++perf.calm>=3 && sc<1){ sc=Math.min(1, sc+.1); perf.calm=0; } }
+  else perf.calm=0;
+  if (sc!==perf.scale){
+    perf.scale=sc;
+    renderer.setPixelRatio(DPR_MAX*sc); composer.setPixelRatio(DPR_MAX*sc); setPostSize();
+  }
+}
+
 function tick(){
   requestAnimationFrame(tick);
-  const dt=Math.min(clock.getDelta(),.05);
+  const rawDt=clock.getDelta();
+  governResolution(rawDt);
+  const dt=Math.min(rawDt,.05);
   const t=clock.elapsedTime;
   ENV.update(dt, t);
   ENV.updateRays();
@@ -1818,6 +1922,8 @@ function tick(){
     u.v.multiplyScalar(1-dt*.6);
     if(u.life<1) m.material.opacity=u.life;
     if(u.life<=0){scene.remove(m);confetti.splice(i,1);} }
+  // while a letter covers the island, redraw the backdrop at a third of the rate
+  if (state.mode==='letter' && (perf.frame++ % 3)) return;
   composer.render();
 }
 
@@ -1839,6 +1945,15 @@ async function init(){
   buildProps();
   buildGuide();
   buildLanterns();
+  bakeStaticWorld();
+  clouds.children.forEach(c=>bakeObject(c));
+  // compile every shader up front (incl. the faded variant trees & buildings use), so nothing
+  // compiles mid-walk the first time you step behind something
+  const ocMats=occluders.flatMap(o=>o.mats);
+  ocMats.forEach(m=>{ m.transparent=true; m.needsUpdate=true; });
+  warmShaders();
+  ocMats.forEach(m=>{ m.transparent=false; m.needsUpdate=true; });
+  warmShaders();
   UI.loadnote.textContent='The island is ready.';
   const gh=new Date().getHours();
   const greetEl=document.getElementById('greet');
@@ -1850,7 +1965,10 @@ async function init(){
             "It's late on the island, but the mail never sleeps.";
   UI.start.disabled=false;
   tick();
+  // project photos are only needed once a letter opens, so they load after the island is playable
+  if (!window.SHOTS){ const sc=document.createElement('script'); sc.src='./js/shots.js'; sc.async=true; document.head.appendChild(sc); }
   UI.fader.classList.add('clear');
+  UI.fader.addEventListener('transitionend', ()=>UI.fader.remove(), {once:true});   // no idle full-screen layer
 }
 UI.start.addEventListener('click', ()=>{
   state.started=true;

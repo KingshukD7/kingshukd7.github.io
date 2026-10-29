@@ -175,9 +175,7 @@
   #prompt.show{opacity:1}
   #prompt b{color:var(--stamp)}
 
-  /* ---------- Fade & vignette ---------- */
-  #vignette{position:fixed;inset:0;pointer-events:none;z-index:15;
-    background:radial-gradient(ellipse at center,transparent 62%,rgba(20,12,6,.28) 100%)}
+  /* ---------- Fade-in (the vignette lives in the WebGL finish pass) ---------- */
   #fader{position:fixed;inset:0;background:#0e1420;z-index:50;pointer-events:none;opacity:1;transition:opacity 1.1s ease}
   #fader.clear{opacity:0}
 
@@ -192,7 +190,6 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="vignette"></div>
 
 <div id="title">
   <div class="postcard">
@@ -262,7 +259,6 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
-<script src="./js/shots.js"></script>
 <script type="module" src="./js/main.js"></script>
 </body>
 </html>

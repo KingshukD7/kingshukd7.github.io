@@ -20,7 +20,7 @@ contents (with `index.html` at the repo root) to a repo named exactly
 - `index.html` — UI shell (title, HUD, dialogue, letter overlays), importmap
 - `js/main.js` — world, characters, deliveries, audio, game loop
 - `assets/models/` — bespoke low-poly models built in Blender for this project (+ a few Kenney CC0 rocks)
-- `vendor/` — Three.js r160 + GLTFLoader + bloom post-processing (vendored, no CDN)
+- Three.js r160 and its add-ons load from the jsDelivr CDN (see the import map in `index.html`)
 
 ## Swap in real links
 Search `js/main.js` for `GH` — itch.io links for Spectrum Ops / Dungeon Golf currently
