@@ -649,7 +649,7 @@ function gradeMaterial(mat, tintHex, noRemap=false){
 
 const EMISSIVE = [
   [/^a_door_glow/, 0xff8a3c, 1.6], [/^a_bulb/, 0xfff2d4, 1.2], [/^t_star/, 0xe8b34b, 1.4],
-  [/^l_glass/, 0xffd9a0, 2.0], [/^e_glow/, 0xffc977, 1.1], [/^t_ownd$/, 0xe8b34b, .9],
+  [/^l_glass/, 0xffd9a0, 2.0], [/^e_glow/, 0xffc977, 1.45], [/^t_ownd$/, 0xe8b34b, .9],
 ];
 function prepModel(root, {tint, shadow=true, noRemap=false} = {}){
   root.traverse(o=>{
@@ -659,6 +659,9 @@ function prepModel(root, {tint, shadow=true, noRemap=false} = {}){
       else o.material = o.material.clone();
       const mats = Array.isArray(o.material)?o.material:[o.material];
       mats.forEach(m=>gradeMaterial(m, tint, noRemap));
+      // Blender exports double-sided materials; let solids cast from their back faces so lit
+      // surfaces never shadow themselves (that self-shadowing showed up as fine stripes)
+      mats.forEach(m=>{ if (m.side===THREE.DoubleSide) m.shadowSide=THREE.BackSide; });
       for (const [re, col, inten] of EMISSIVE)
         if (re.test(o.name)){ mats.forEach(m=>{ m.emissive=new THREE.Color(col); m.emissiveIntensity=inten; }); }
     }
