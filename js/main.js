@@ -31,6 +31,7 @@ const HUE_SHIFT = 0.015, SAT_MUL = 1.08, LIGHT_MUL = 1.04;
 // ---------- Delivery content ----------
 const GH = 'https://github.com/KingshukD7';
 const LI = 'https://www.linkedin.com/in/kingshuk-dholakia/';
+const RESUME_URL = 'Kingshuk%20Dholakia%20Resume.pdf', RESUME_NAME = 'Kingshuk Dholakia Resume.pdf';   // downloads under this name
 const DELIVERIES = {
   cafe: {
     npc:'Pip', role:'the barista', building:'Cinnamon Café', stamp:null,
@@ -297,7 +298,7 @@ const DELIVERIES = {
  "This site is my resume in playable form: hand wired Three.js, an original synthesized score, and a complete set of low poly models I built in Blender specifically for this island, every building, tree, lantern and the courier you're playing. Nothing here is templated, stock, or borrowed."
       ],
       tags:['Unity · C#','JavaScript · Three.js','React Native','WebAudio','Blender','SOLID & design patterns','UTS Games Development'],
-      links:[['Resume (PDF)','resume.pdf'],['LinkedIn',LI],['Email','mailto:kingshuk.dholakia@gmail.com']],
+      links:[['Resume (PDF)',RESUME_URL],['LinkedIn',LI],['Email','mailto:kingshuk.dholakia@gmail.com']],
       sig:'thanks for walking my island. K.D.',
       snapshot:{
  role:'Game Developer, gameplay programming, systems design, audio',
@@ -330,7 +331,7 @@ const FINAL_LETTER = {
     "I'm looking for a games or software engineering role where that instinct is useful. If your studio has a door, I'd love to deliver to it.",
   ],
   tags:['Open to work','Sydney / remote','Games · Software Engineering'],
-  links:[['Resume (PDF)','resume.pdf'],['GitHub',GH],['LinkedIn',LI],['Say hello','mailto:kingshuk.dholakia@gmail.com']],
+  links:[['Resume (PDF)',RESUME_URL],['GitHub',GH],['LinkedIn',LI],['Say hello','mailto:kingshuk.dholakia@gmail.com']],
   sig:'your courier, Kingshuk'
 };
 
@@ -1457,7 +1458,9 @@ function showLetter(L, eyebrow, stamp, onClose){
     [...tabs.children].forEach(b=>b.onclick=()=>{ cur=b.dataset.p; SFX.rustle(); renderPage(); });
   } else tabs.style.display='none';
   UI.ltags.innerHTML=L.tags.map(t=>`<span>${t}</span>`).join('');
-  UI.llinks.innerHTML=L.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${t}</a>`).join('');
+  UI.llinks.innerHTML=L.links.map(([t,u])=>u===RESUME_URL
+    ? `<a href="${u}" download="${RESUME_NAME}">${t}</a>`
+    : `<a href="${u}" target="_blank" rel="noopener">${t}</a>`).join('');
   UI.lsig.textContent=L.sig;
   renderPage();
   UI.letterwrap.classList.add('show');
@@ -1657,13 +1660,13 @@ const SFX = (()=>{
 // Resume: in the single-file build the PDF ships embedded — turn its links into a live blob
 if (typeof window!=='undefined' && window.RESUME_B64){
   addEventListener('click', e=>{
-    const a=e.target.closest && e.target.closest('a[href$="resume.pdf"]');
+    const a=e.target.closest && e.target.closest('a[download$=".pdf"]');
     if (!a) return;
     e.preventDefault();
     const bin=atob(window.RESUME_B64), buf=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
     const url=URL.createObjectURL(new Blob([buf],{type:'application/pdf'}));
-    const dl=document.createElement('a'); dl.href=url; dl.download='Kingshuk_Dholakia_Game_Developer.pdf';
+    const dl=document.createElement('a'); dl.href=url; dl.download=RESUME_NAME;
     dl.click(); setTimeout(()=>URL.revokeObjectURL(url), 5000);
   }, true);
 }
